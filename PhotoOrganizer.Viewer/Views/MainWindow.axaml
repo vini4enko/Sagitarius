@@ -1,0 +1,153 @@
+﻿<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:PhotoOrganizer.Viewer.ViewModels"
+        xmlns:ctrl="using:PhotoOrganizer.Viewer.Controls"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="1400" d:DesignHeight="900"
+        xmlns:local="clr-namespace:PhotoOrganizer.Viewer.Converters;assembly=PhotoOrganizer.Viewer"
+        x:Class="PhotoOrganizer.Viewer.Views.MainWindow"
+        x:DataType="vm:MainWindowViewModel"
+        Title="PhotoOrganizer Viewer"
+        Width="1400" Height="900" >
+
+    <Window.Resources>
+        <local:BusyCursorConverter x:Key="BusyCursorConverter" />
+    </Window.Resources>
+    
+    <Design.DataContext>
+        <vm:MainWindowViewModel />
+    </Design.DataContext>
+
+    <DockPanel>
+
+        <!-- Панель команд -->
+        <Border DockPanel.Dock="Top" Background="#F0F0F0" Padding="8">
+            <Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto,Auto,Auto,Auto,Auto">
+                <Button Grid.Column="0" Content="◀ Пред" Command="{Binding PrevPageCommand}"
+                        IsEnabled="{Binding CanPrevPage}" Margin="0,0,4,0"/>
+                <Button Grid.Column="1" Content="След ▶" Command="{Binding NextPageCommand}"
+                        IsEnabled="{Binding CanNextPage}" Margin="0,0,4,0"/>
+                <TextBlock Grid.Column="2" Text="{Binding StatusText}" VerticalAlignment="Center"
+                           Margin="8,0,8,0"/>
+
+                <ToggleButton Grid.Column="4" Content="Фильтр"
+                              IsChecked="{Binding FilterPanelExpanded}"
+                              Margin="0,0,4,0"/>
+
+                <Button Grid.Column="5" Content="Аноним" Command="{Binding AnonymousModeCommand}"
+                        Margin="0,0,4,0"/>
+                <TextBox  Grid.Column="6" Width="120" Text="{Binding LoginInput}"
+                          Watermark="Логин" Margin="0,0,4,0"/>
+                <TextBox  Grid.Column="7" Width="120" Text="{Binding PasswordInput}"
+                          PasswordChar="*" Watermark="Пароль" Margin="0,0,4,0"/>
+                <Button   Grid.Column="8" Content="Войти" Command="{Binding LoginCommand}"/>
+            </Grid>
+        </Border>
+
+        <!-- Панель фильтра (сворачиваемая) -->
+        <Expander DockPanel.Dock="Top" Header="Фильтр"
+                  IsExpanded="{Binding FilterPanelExpanded}"
+                  Margin="8,4,8,0">
+            <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto,*,Auto" Margin="8">
+                <TextBlock Grid.Column="0" Text="Загружено с:"  VerticalAlignment="Center" Margin="0,0,4,0"/>
+                <DatePicker Grid.Column="1" SelectedDate="{Binding FilterUploadedFrom}" Width="140" Margin="0,0,8,0"/>
+                <TextBlock Grid.Column="2" Text="по:"  VerticalAlignment="Center" Margin="0,0,4,0"/>
+                <DatePicker Grid.Column="3" SelectedDate="{Binding FilterUploadedTo}" Width="140" Margin="0,0,8,0"/>
+
+                <TextBlock Grid.Column="4" Text="Создано с:" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                <DatePicker Grid.Column="5" SelectedDate="{Binding FilterTakenFrom}" Width="140" Margin="0,0,8,0"/>
+                <TextBlock Grid.Column="0" Text="Создано по:" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                <DatePicker Grid.Column="1" SelectedDate="{Binding FilterTakenTo}" Width="140" Margin="0,0,8,0"/>
+
+                <TextBlock Grid.Column="2" Text="Автор:" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                <TextBox   Grid.Column="3" Text="{Binding FilterAuthor}" Width="160" Margin="0,0,8,0"/>
+
+                <TextBlock Grid.Column="4" Text="Альбом:" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                <TextBox   Grid.Column="5" Text="{Binding FilterAlbum}" Width="160" Margin="0,0,8,0"/>
+
+                <StackPanel Grid.Column="6" Orientation="Horizontal">
+                    <Button Content="Применить" Command="{Binding ApplyFilterCommand}" Margin="0,0,4,0"/>
+                    <Button Content="Сбросить" Command="{Binding ResetFilterCommand}"/>
+                </StackPanel>
+            </Grid>
+        </Expander>
+
+        <!-- Основная область: лента + просмотр + атрибуты -->
+        <Grid ColumnDefinitions="*,Auto">
+
+            <!-- Левая колонка: лента и текущее изображение -->
+            <Grid Grid.Column="0" RowDefinitions="Auto,*">
+
+                <!-- Лента превью (горизонтальный скролл) -->
+                <ScrollViewer Grid.Row="0" HorizontalScrollBarVisibility="Auto"
+                              VerticalScrollBarVisibility="Disabled"
+                              Height="140" Padding="8">
+                    <ItemsControl ItemsSource="{Binding Photos}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Orientation="Horizontal"/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Margin="2" Padding="2" BorderThickness="1"
+                                        BorderBrush="#D0D0D0" CornerRadius="2"
+                                        PointerPressed="OnThumbnailClicked">
+                                    <StackPanel Width="120">
+                                        <Image Source="{Binding Thumbnail}" Height="90" Stretch="Uniform"/>
+                                        <TextBlock Text="{Binding Title}" TextWrapping="NoWrap"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   FontSize="11" Margin="0,2,0,0"/>
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+
+                <!-- Текущее изображение с зумом и панорамированием -->
+                <Border Grid.Row="1" Background="#202020" Margin="8">
+                    <ctrl:ZoomableImage Source="{Binding FullImage}"
+                                        DoubleTapped="OnZoomableImageDoubleTapped"/>
+                </Border>
+            </Grid>
+
+            <!-- Правая колонка: панель атрибутов -->
+            <Border Grid.Column="1" Width="280" Background="#FAFAFA"
+                    BorderBrush="#D0D0D0" BorderThickness="1,0,0,0">
+                <ScrollViewer Padding="8">
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="Атрибуты" FontWeight="Bold" FontSize="14"/>
+                        <Separator/>
+                        <TextBlock Text="{Binding CurrentPhoto.Title, FallbackValue='—'}"
+                                   TextWrapping="Wrap" FontWeight="SemiBold"/>
+                        <TextBlock Text="Автор:" FontWeight="SemiBold"/>
+                        <TextBlock Text="{Binding CurrentPhoto.AuthorName, FallbackValue='—'}"
+                                   TextWrapping="Wrap"/>
+                        <TextBlock Text="Альбомы:" FontWeight="SemiBold"/>
+                        <TextBlock Text="{Binding CurrentPhoto.AlbumsDisplay, FallbackValue='—'}"
+                                   TextWrapping="Wrap"/>
+                        <TextBlock Text="Адрес:" FontWeight="SemiBold"/>
+                        <TextBlock Text="{Binding CurrentPhoto.Address, FallbackValue='—'}"
+                                   TextWrapping="Wrap"/>
+                        <TextBlock Text="Координаты:" FontWeight="SemiBold"/>
+                        <TextBlock>
+                            <Run Text="{Binding CurrentPhoto.Lat, FallbackValue='—'}"/>
+                            <Run Text=", "/>
+                            <Run Text="{Binding CurrentPhoto.Lon, FallbackValue='—'}"/>
+                        </TextBlock>
+                        <TextBlock Text="Загружено:" FontWeight="SemiBold"/>
+                        <TextBlock Text="{Binding CurrentPhoto.UploadedAt, StringFormat='{}{0:yyyy-MM-dd HH:mm}'}"/>
+                        <TextBlock Text="Создано:" FontWeight="SemiBold"/>
+                        <TextBlock Text="{Binding CurrentPhoto.TakenAt, StringFormat='{}{0:yyyy-MM-dd HH:mm}'}"/>
+                        <TextBlock Text="ID:" FontWeight="SemiBold"/>
+                        <SelectableTextBlock Text="{Binding CurrentPhoto.Id}" TextWrapping="Wrap"/>
+                        <TextBlock Text="S3 key:" FontWeight="SemiBold"/>
+                        <SelectableTextBlock Text="{Binding CurrentPhoto.ObjectKey}" TextWrapping="Wrap"/>
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+        </Grid>
+    </DockPanel>
+</Window>

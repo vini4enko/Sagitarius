@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/Элементы решения/">
+    <File Path="../deploy.sql" />
+  </Folder>
+  <Project Path="../PhotoOrganizer.Storage.Tests/PhotoOrganizer.Storage.Tests.csproj" Id="c943b87a-e3fb-40d6-bf2d-8f8b7f60579a" />
+  <Project Path="../PhotoOrganizer.Storage/PhotoOrganizer.Storage.csproj" Id="7006b26c-00bc-4b98-82e1-d43ed3429beb" />
+  <Project Path="../PhotoOrganizer.Uploader/PhotoOrganizer.Uploader.csproj" Id="a90a28c9-0996-46e3-a798-5f90c54a4b5c" />
+  <Project Path="../PhotoOrganizer/PhotoOrganizer.csproj" />
+  <Project Path="PhotoOrganizer.Data.csproj" />
+</Solution>

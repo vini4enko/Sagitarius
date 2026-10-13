@@ -1,0 +1,114 @@
+﻿{
+  "defaults": {
+    "authorName": "Неизвестный автор",
+    "access": { "public": true }
+  },
+  "photos": [
+    {
+      "file": "01-family.jpeg",
+      "objectKey": "albums/family/01-family.jpeg",
+      "title": "Семейный портрет",
+      "albums": [ "Семья Ивановых", "Отпуск 2026" ],
+      "authorName": "Иван Иванов",
+      "address": "Москва, Красная площадь",
+      "lon": 37.6173,
+      "lat": 55.7558,
+      "access": { "public": true }
+    },
+    {
+      "file": "02-family.jpeg",
+      "objectKey": "albums/family/02-family.jpeg",
+      "title": "Новый год",
+      "albums": [ "Семья Ивановых" ]
+    },
+    {
+      "file": "03-family.jpeg",
+      "objectKey": "albums/family/03-family.jpeg",
+      "title": "Новый год",
+      "albums": [ "Семья Ивановых" ]
+    },
+    {
+      "file": "04-wedding.jpeg",
+      "objectKey": "albums/family/04-wedding.jpeg",
+      "title": "Новый год",
+      "albums": [ "Семья Ивановых" ]
+    },
+    {
+      "file": "05-wedding.jpeg",
+      "objectKey": "albums/family/05-wedding.jpeg",
+      "title": "Новый год",
+      "albums": [ "Семья Ивановых" ]
+    },
+    {
+      "file": "06-wedding.jpeg",
+      "objectKey": "albums/family/06-wedding.jpeg",
+      "title": "Новый год",
+      "albums": [ "Семья Ивановых" ]
+    },
+    {
+      "file": "07-travel.jpeg",
+      "objectKey": "albums/travel/07-travel.jpeg",
+      "title": "Сочи, личное",
+      "albums": [ "Отпуск 2026" ],
+      "access": {
+        "public": false,
+        "users": [ "ivan", "maria" ]
+      }
+    },
+    {
+      "file": "08-travel.jpeg",
+      "objectKey": "albums/travel/08-travel.jpeg",
+      "title": "Служебное фото",
+      "albums": [ "Рабочие моменты" ],
+      "access": {
+        "public": false,
+        "users": [ "olga" ],
+        "roles": [ "manager" ]
+      }
+    },
+    {
+      "file": "09-work.jpeg",
+      "objectKey": "albums/travel/09-work.jpeg",
+      "title": "Служебное фото",
+      "albums": [ "Рабочие моменты" ],
+      "access": {
+        "public": false,
+        "users": [ "olga" ],
+        "roles": [ "manager" ]
+      }
+    },
+    {
+      "file": "10-other.jpeg",
+      "objectKey": "albums/travel/10-other.jpeg",
+      "title": "Служебное фото",
+      "albums": [ "Рабочие моменты" ],
+      "access": {
+        "public": false,
+        "users": [ "olga" ],
+        "roles": [ "manager" ]
+      }
+    },
+    {
+      "file": "11-other.jpeg",
+      "objectKey": "albums/travel/11-other.jpeg",
+      "title": "Служебное фото",
+      "albums": [ "Рабочие моменты" ],
+      "access": {
+        "public": false,
+        "users": [ "olga" ],
+        "roles": [ "manager" ]
+      }
+    },
+    {
+      "file": "12-other.jpeg",
+      "objectKey": "albums/travel/12-other.jpeg",
+      "title": "Служебное фото",
+      "albums": [ "Рабочие моменты" ],
+      "access": {
+        "public": false,
+        "users": [ "olga" ],
+        "roles": [ "manager" ]
+      }
+    }
+  ]
+}

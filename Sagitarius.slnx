@@ -1,0 +1,8 @@
+<Solution>
+  <Project Path="PhotoOrganizer.Data/PhotoOrganizer.Data.csproj" />
+  <Project Path="PhotoOrganizer.Storage.Tests/PhotoOrganizer.Storage.Tests.csproj" />
+  <Project Path="PhotoOrganizer.Storage/PhotoOrganizer.Storage.csproj" />
+  <Project Path="PhotoOrganizer.Uploader/PhotoOrganizer.Uploader.csproj" />
+  <Project Path="PhotoOrganizer.Viewer/PhotoOrganizer.Viewer.csproj" />
+  <Project Path="PhotoOrganizer/PhotoOrganizer.csproj" />
+</Solution>
