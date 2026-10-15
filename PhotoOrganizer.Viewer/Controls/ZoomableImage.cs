@@ -4,11 +4,37 @@ using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using System;
+using System.Diagnostics;
 
 namespace PhotoOrganizer.Viewer.Controls;
 
 public class ZoomableImage : Control
 {
+
+    private bool _needsFit = true;
+
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    {
+        base.OnPropertyChanged(change);
+        if (change.Property == SourceProperty)
+        {
+            _needsFit = true;
+            FitToBounds();          // может не сработать, если Bounds ещё не установлены
+            InvalidateVisual();
+        }
+    }
+
+    protected override Size ArrangeOverride(Size finalSize)
+    {
+        var result = base.ArrangeOverride(finalSize);
+        if (_needsFit && Source is not null
+            && finalSize.Width > 0 && finalSize.Height > 0)
+        {
+            FitToBounds();
+            _needsFit = false;
+        }
+        return result;
+    }
     public static readonly StyledProperty<IImage?> SourceProperty =
         AvaloniaProperty.Register<ZoomableImage, IImage?>(nameof(Source));
 
@@ -23,17 +49,33 @@ public class ZoomableImage : Control
     private Point _lastPointer;
     private bool _isPanning;
 
+    // Для отслеживания двойного клика вручную.
+    private DateTime _lastClickTime = DateTime.MinValue;
+    private Point _lastClickPosition;
+    private const int DoubleClickIntervalMs = 500;
+    private const double DoubleClickMaxDistance = 5.0;
+
     private const double MinScale = 0.1;
     private const double MaxScale = 20.0;
     private const double ZoomStep = 1.15;
 
+    public static readonly StyledProperty<IBrush?> BackgroundProperty =
+        AvaloniaProperty.Register<ZoomableImage, IBrush?>(nameof(Background));
+
+    public IBrush? Background
+    {
+        get => GetValue(BackgroundProperty);
+        set => SetValue(BackgroundProperty, value);
+    }
+
     static ZoomableImage()
     {
-        AffectsRender<ZoomableImage>(SourceProperty);
+        AffectsRender<ZoomableImage>(SourceProperty, BackgroundProperty);
     }
 
     public ZoomableImage()
     {
+        System.Diagnostics.Debug.WriteLine("[DBG] ZoomableImage ctor");
         ClipToBounds = true;
         Focusable = true;
     }
@@ -43,12 +85,10 @@ public class ZoomableImage : Control
         base.OnPointerWheelChanged(e);
 
         var pos = e.GetPosition(this);
-
         double factor = e.Delta.Y > 0 ? ZoomStep : 1.0 / ZoomStep;
         double newScale = Math.Clamp(_scale * factor, MinScale, MaxScale);
         if (Math.Abs(newScale - _scale) < 1e-9) return;
 
-        // Масштабирование относительно позиции курсора
         var rel = new Vector(pos.X - Bounds.Width / 2,
                              pos.Y - Bounds.Height / 2);
         _translate = (_translate - rel) * (newScale / _scale) + rel;
@@ -61,6 +101,13 @@ public class ZoomableImage : Control
     {
         base.OnPointerPressed(e);
 
+        if (e.ClickCount == 2)
+        {
+            FitToBounds();
+            e.Handled = true;
+            return;
+        }
+
         var props = e.GetCurrentPoint(this).Properties;
         if (props.IsLeftButtonPressed)
         {
@@ -71,7 +118,6 @@ public class ZoomableImage : Control
             e.Handled = true;
         }
     }
-
     protected override void OnPointerMoved(PointerEventArgs e)
     {
         base.OnPointerMoved(e);
@@ -109,6 +155,12 @@ public class ZoomableImage : Control
     {
         base.Render(context);
 
+        // Сначала заливаем фон — это делает контрол hit-testable.
+        if (Background != null)
+            context.FillRectangle(Background, new Rect(0, 0, Bounds.Width, Bounds.Height));
+
+        if (Source is null) return;
+
         if (Source is null) return;
 
         var size = Source.Size;
@@ -125,5 +177,40 @@ public class ZoomableImage : Control
         {
             context.DrawImage(Source, destRect);
         }
+    }
+
+    protected override void OnSizeChanged(SizeChangedEventArgs e)
+    {
+        base.OnSizeChanged(e);
+        Console.WriteLine($"[DBG] OnSizeChanged: {e.PreviousSize} -> {e.NewSize}");
+    }
+
+    protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnAttachedToVisualTree(e);
+        Console.WriteLine($"[DBG] Attached to visual tree");
+    }
+
+    /// <summary>
+    /// Вписывает изображение в границы контрола: весь кадр виден, пропорции сохранены,
+    /// положение центрировано. Вызывается по двойному клику и при загрузке новой картинки.
+    /// </summary>
+    public void FitToBounds()
+    {
+        if (Source is null) return;
+        if (Bounds.Width <= 0 || Bounds.Height <= 0) return;
+
+        var imageSize = Source.Size;
+        if (imageSize.Width <= 0 || imageSize.Height <= 0) return;
+
+        double scaleX = Bounds.Width / imageSize.Width;
+        double scaleY = Bounds.Height / imageSize.Height;
+
+        // Math.Min — вписать целиком (весь кадр виден).
+        // Math.Max — заполнить целиком (часть кадра обрезана).
+        // Для «максимального масштабирования в границах» логичнее Min.
+        _scale = Math.Clamp(Math.Min(scaleX, scaleY), MinScale, MaxScale);
+        _translate = Vector.Zero;      // центрирование обеспечивается Render
+        InvalidateVisual();
     }
 }

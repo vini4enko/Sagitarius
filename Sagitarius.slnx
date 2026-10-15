@@ -1,4 +1,5 @@
 <Solution>
+  <Project Path="MyPhoto/ExifApp.csproj" />
   <Project Path="PhotoOrganizer.Data/PhotoOrganizer.Data.csproj" />
   <Project Path="PhotoOrganizer.Storage.Tests/PhotoOrganizer.Storage.Tests.csproj" />
   <Project Path="PhotoOrganizer.Storage/PhotoOrganizer.Storage.csproj" />

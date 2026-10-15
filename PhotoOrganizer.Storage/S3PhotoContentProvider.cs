@@ -29,13 +29,28 @@ public class S3PhotoContentProvider : IPhotoContentProvider
         if (thumb is null) return null;
         return new MemoryStream(thumb.Data);
     }
-
     public async Task<Stream?> GetFullImageAsync(
-    Guid photoId, long userId, long roleId, CancellationToken ct = default)
+        Guid photoId, long userId, long roleId, CancellationToken ct = default)
     {
         var s3Info = await _userRepo.GetVisiblePhotoS3InfoAsync(photoId, userId, roleId);
+        System.Diagnostics.Debug.WriteLine(
+            $"[DBG] GetVisiblePhotoS3InfoAsync: {(s3Info is null ? "null (нет доступа)" : $"bucket={s3Info.Value.Bucket}, key={s3Info.Value.ObjectKey}")}");
+
         if (s3Info is null) return null;
 
-        return await _s3.DownloadAsync(s3Info.Value.ObjectKey, ct);
+        try
+        {
+            var stream = await _s3.DownloadAsync(s3Info.Value.ObjectKey, ct);
+            System.Diagnostics.Debug.WriteLine(
+                $"[DBG] DownloadAsync OK: stream={(stream != null ? "not null" : "null")}, " +
+                $"length={(stream?.CanSeek == true ? stream.Length : -1)}, " +
+                $"pos={(stream?.CanSeek == true ? stream.Position : -1)}");
+            return stream;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[DBG] DownloadAsync FAILED: {ex.GetType().Name}: {ex.Message}");
+            throw;
+        }
     }
 }

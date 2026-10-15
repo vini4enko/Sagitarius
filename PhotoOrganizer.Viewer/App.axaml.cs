@@ -1,6 +1,7 @@
 ﻿using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
+using Avalonia.Input;
 using Microsoft.Extensions.Configuration;
 using PhotoOrganizer.Viewer.Services;
 using PhotoOrganizer.Viewer.ViewModels;
@@ -34,4 +35,11 @@ public partial class App : Application
 
         base.OnFrameworkInitializationCompleted();
     }
+    //private void OnZoomableImageDoubleTapped(object? sender, TappedEventArgs e)
+    //{
+    //    if (DataContext is MainWindowViewModel vm)
+    //    {
+    //        vm.LoadFullImageCommand.Execute(null);
+    //    }
+    //}
 }

@@ -1,5 +1,6 @@
 ﻿using PhotoOrganizer.Data;
 using PhotoOrganizer.Viewer.Services;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -26,4 +27,9 @@ public class PhotoQueryService
     public Task<(long UserId, long? RoleId)?> AuthenticateAsync(
         string login, string password)
         => _repo.AuthenticateAsync(login, password);
+
+    public async Task<List<PhotoInfo>> GetAllAsync(PhotoFilter filter)
+    {
+        return await _repo.GetVisiblePhotosAsync((long)_session.UserId, (long)_session.RoleId);
+    }
 }

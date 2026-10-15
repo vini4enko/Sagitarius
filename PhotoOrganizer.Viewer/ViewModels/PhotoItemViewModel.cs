@@ -12,7 +12,9 @@ public partial class PhotoItemViewModel : ObservableObject
 
     [ObservableProperty]
     private Bitmap? _thumbnail;
-
+    [ObservableProperty] private bool _isCurrent;   // фото сейчас показывается справа
+    [ObservableProperty] private bool _isMarked;    // фото отмечено для групповой операции
+    public bool IsCurrentOrMarked => IsCurrent || IsMarked;
     public Guid Id => Model.Id;
     public string? Title => Model.Title;
     public string ObjectKey => Model.ObjectKey;

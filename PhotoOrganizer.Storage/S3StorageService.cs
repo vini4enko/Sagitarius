@@ -51,19 +51,17 @@ public class S3StorageService : IDisposable
     /// <summary>
     /// Скачивает объект в поток.
     /// </summary>
-    public async Task<Stream> DownloadAsync(
-        string objectKey,
-        CancellationToken ct = default)
+    public async Task<Stream> DownloadAsync(string objectKey, CancellationToken ct = default)
     {
-        var response = await _s3Client.GetObjectAsync(
-            _options.BucketName, objectKey, ct);
+        var response = await _s3Client.GetObjectAsync(_options.BucketName, objectKey, ct);
 
-        return response.ResponseStream;
-    }
-
-    /// <summary>
-    /// Удаляет объект. Идемпотентен: удаление несуществующего объекта не ошибка.
-    /// </summary>
+        var ms = new MemoryStream();
+        await response.ResponseStream.CopyToAsync(ms, ct);
+        ms.Position = 0;
+        return ms;
+    }    /// <summary>
+         /// Удаляет объект. Идемпотентен: удаление несуществующего объекта не ошибка.
+         /// </summary>
     public async Task DeleteAsync(
         string objectKey,
         CancellationToken ct = default)

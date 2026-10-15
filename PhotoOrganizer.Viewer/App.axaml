@@ -3,7 +3,7 @@
              x:Class="PhotoOrganizer.Viewer.App"
              xmlns:local="using:PhotoOrganizer.Viewer"
              RequestedThemeVariant="Default">
-             <!-- "Default" ThemeVariant follows system theme variant. "Dark" or "Light" are other available options. -->
+    <!-- "Default" ThemeVariant follows system theme variant. "Dark" or "Light" are other available options. -->
 
     <Application.DataTemplates>
         <local:ViewLocator />
@@ -11,5 +11,39 @@
 
     <Application.Styles>
         <FluentTheme />
+
+        <!-- Базовые кнопки -->
+        <Style Selector="Button">
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Padding" Value="12,6"/>
+            <Setter Property="FontWeight" Value="Medium"/>
+            <Setter Property="Background" Value="#F5F5F5"/>
+            <Setter Property="BorderBrush" Value="#D0D0D0"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Background" Duration="0:0:0.15"/>
+                    <BrushTransition Property="BorderBrush" Duration="0:0:0.15"/>
+                </Transitions>
+            </Setter>
+        </Style>
+
+        <!-- При наведении мыши -->
+        <Style Selector="Button:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="#E8F4FD"/>
+            <Setter Property="BorderBrush" Value="#90CAF9"/>
+        </Style>
+
+        <!-- При нажатии -->
+        <Style Selector="Button:pressed /template/ ContentPresenter">
+            <Setter Property="Background" Value="#BBDEFB"/>
+        </Style>
+
+        <!-- Отключённая кнопка -->
+        <Style Selector="Button:disabled /template/ ContentPresenter">
+            <Setter Property="Background" Value="#F0F0F0"/>
+            <Setter Property="Foreground" Value="#A0A0A0"/>
+        </Style>
     </Application.Styles>
+
 </Application>
