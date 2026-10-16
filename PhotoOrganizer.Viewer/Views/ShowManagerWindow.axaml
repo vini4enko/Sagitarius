@@ -1,0 +1,89 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:PhotoOrganizer.Viewer.ViewModels"
+        xmlns:data="using:PhotoOrganizer.Data"
+        x:Class="PhotoOrganizer.Viewer.Views.ShowManagerWindow"
+        x:DataType="vm:ShowManagerViewModel"
+        Title="Менеджер шоу"
+        Width="1000" Height="700"
+        WindowStartupLocation="CenterOwner">
+
+    <Grid ColumnDefinitions="300,*" RowDefinitions="Auto,*">
+
+        <!-- Левая колонка: список шоу -->
+        <StackPanel Grid.Row="0" Grid.Column="0"
+                    Orientation="Horizontal" Margin="8">
+            <Button Content="Создать"  Command="{Binding CreateShowCommand}"  Margin="0,0,4,0"/>
+            <Button Content="Удалить"  Command="{Binding DeleteShowCommand}"/>
+        </StackPanel>
+
+        <ListBox Grid.Row="1" Grid.Column="0" Margin="8"
+                 ItemsSource="{Binding Shows}"
+                 SelectedItem="{Binding SelectedShow}">
+            <ListBox.ItemTemplate>
+                <DataTemplate x:DataType="data:ShowListItem">
+                    <StackPanel>
+                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold"/>
+                        <TextBlock Text="{Binding PhotoCount, StringFormat='{}{0} фото'}"
+                                   FontSize="11" Foreground="#666"/>
+                    </StackPanel>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+
+        <!-- Правая колонка: детали и список фотографий -->
+        <Grid Grid.Row="0" Grid.Column="1" Grid.RowSpan="2"
+              RowDefinitions="Auto,*,Auto" Margin="8">
+
+            <!-- Форма редактирования -->
+            <StackPanel Grid.Row="0" Spacing="6">
+                <TextBlock Text="Имя шоу:" FontWeight="SemiBold"/>
+                <TextBox Text="{Binding EditingShow.Name}" Watermark="Имя шоу"/>
+
+                <TextBlock Text="Описание:" FontWeight="SemiBold"/>
+                <TextBox Text="{Binding EditingShow.Description}" Watermark="Описание"/>
+
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBlock Text="Интервал (сек):" VerticalAlignment="Center"/>
+                    <NumericUpDown Value="{Binding EditingShow.IntervalSeconds}"
+                                   Minimum="1" Maximum="600"
+                                   FormatString="0" Width="120"/>
+                </StackPanel>
+
+                <CheckBox IsChecked="{Binding EditingShow.Loop}" Content="Зацикливать"/>
+                <CheckBox IsChecked="{Binding EditingShow.ShowCaptions}" Content="Показывать подписи"/>
+
+                <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,4,0,0">
+                    <Button Content="Сохранить"        Command="{Binding SaveShowCommand}"/>
+                    <Button Content="Сделать текущим"  Command="{Binding MakeCurrentCommand}"/>
+                    <Button Content="Предпросмотр"     Command="{Binding PreviewCommand}"/>
+                </StackPanel>
+
+                <TextBlock Text="{Binding StatusText}" Foreground="#666"/>
+            </StackPanel>
+
+            <!-- Список фотографий шоу -->
+            <TextBlock Grid.Row="1" Text="Фотографии в шоу:"
+                       FontWeight="SemiBold" Margin="0,8,0,4"/>
+
+            <Grid Grid.Row="2" ColumnDefinitions="*,Auto">
+                <ListBox Grid.Column="0"
+                         ItemsSource="{Binding CurrentShowPhotos}"
+                         SelectedItem="{Binding SelectedShowPhoto}">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate x:DataType="data:ShowPhotoItem">
+                            <TextBlock Text="{Binding Title, FallbackValue='(без имени)'}"/>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+
+                <StackPanel Grid.Column="1" Spacing="4" Margin="8,0,0,0"
+                            VerticalAlignment="Top">
+                    <Button Content="▲ Вверх"  Command="{Binding MoveUpCommand}"/>
+                    <Button Content="▼ Вниз"   Command="{Binding MoveDownCommand}"/>
+                    <Button Content="Убрать"   Command="{Binding RemovePhotoCommand}"/>
+                </StackPanel>
+            </Grid>
+        </Grid>
+    </Grid>
+</Window>

@@ -1,9 +1,10 @@
 ﻿using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Controls.Selection;
 using Avalonia.Input;
-using Avalonia.Platform.Storage;
 using Avalonia.Media.Imaging;
+using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -11,6 +12,7 @@ using PhotoOrganizer.Data;
 using PhotoOrganizer.Data.Repositories;
 using PhotoOrganizer.Storage;
 using PhotoOrganizer.Viewer.Services;
+using PhotoOrganizer.Viewer.Views;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -18,6 +20,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+using PhotoOrganizer.Viewer.Views;
 
 namespace PhotoOrganizer.Viewer.ViewModels;
 
@@ -112,10 +115,6 @@ public partial class MainWindowViewModel : ObservableObject
         ;
         await LoadPhotosAsync();
     }
-
- 
-
-
 
     [RelayCommand]
     private async Task ApplyFilterAsync()
@@ -428,8 +427,105 @@ public partial class MainWindowViewModel : ObservableObject
         }
         return null;
     }
-    // ----- Внутреннее ---------------------------------------------------
+    // ----- Hежим отбора ------------------------------------------------
+    [ObservableProperty] private bool _isSelectionMode;
+    [ObservableProperty] private ShowListItem? _currentShow;
+    [ObservableProperty] private int _currentShowPhotoCount;
+    private readonly AdminRepository _adminRepo = new();
 
+    [RelayCommand]
+    private void ToggleSelectionMode()
+    {
+        if (CurrentShow is null)
+        {
+            StatusText = "Сначала выберите шоу в менеджере шоу";
+            return;
+        }
+        IsSelectionMode = !IsSelectionMode;
+    }
+
+    [RelayCommand]
+    private async Task OpenShowManagerAsync()
+    {
+        var vm = new ShowManagerViewModel(_contentProvider, _adminRepo, _userId, _roleId);
+        var window = new ShowManagerWindow { DataContext = vm };
+
+        // Пока менеджер открыт, главное окно заблокировано.
+        await window.ShowDialog(GetMainWindow());
+
+        // После закрытия перечитываем текущее шоу (могли переименовать/удалить).
+        await ReloadCurrentShowAsync();
+        await RefreshShowMembershipAsync();
+    }
+    /// <summary>Вызывается из MainWindow.axaml.cs при клике по чекбоксу в режиме отбора.</summary>
+    public async Task TogglePhotoInShowAsync(PhotoItemViewModel photo)
+    {
+        if (CurrentShow is null) return;
+        using var repo = new AdminRepository();
+
+        if (photo.IsInCurrentShow)
+            await repo.RemovePhotoFromShowAsync(CurrentShow.Id, photo.Id);
+        else
+            await repo.AddPhotoToShowAsync(CurrentShow.Id, photo.Id);
+
+        photo.IsInCurrentShow = !photo.IsInCurrentShow;
+        CurrentShowPhotoCount = await repo.GetShowPhotoCountAsync(CurrentShow.Id);
+        StatusText = $"Шоу «{CurrentShow.Name}»: {CurrentShowPhotoCount} фото";
+    }
+
+    public async Task SetCurrentShowAsync(ShowListItem? show)
+    {
+        CurrentShow = show;
+        CurrentShowPhotoCount = show is null ? 0 : await _adminRepo.GetShowPhotoCountAsync(show.Id);
+        await RefreshShowMembershipAsync();
+    }
+
+    private async Task ReloadCurrentShowAsync()
+    {
+        if (CurrentShow is null) return;
+        var fresh = await _adminRepo.GetShowAsync(CurrentShow.Id);
+        if (fresh is null)
+        {
+            CurrentShow = null;
+            CurrentShowPhotoCount = 0;
+            IsSelectionMode = false;
+            StatusText = "Текущее шоу было удалено";
+            await RefreshShowMembershipAsync();
+            return;
+        }
+        CurrentShow = new ShowListItem
+        {
+            Id = fresh.Id,
+            Name = fresh.Name,
+            Description = fresh.Description,
+            AuthorId = fresh.AuthorId,
+            CreatedAt = fresh.CreatedAt,
+            IntervalSeconds = fresh.IntervalSeconds,
+            PhotoCount = fresh.PhotoCount
+        };
+        CurrentShowPhotoCount = fresh.PhotoCount;
+        await RefreshShowMembershipAsync();
+    }
+
+    private async Task RefreshShowMembershipAsync()
+    {
+        var ids = CurrentShow is null
+            ? new HashSet<Guid>()
+            : await _adminRepo.GetShowPhotoIdsAsync(CurrentShow.Id);
+
+        foreach (var p in Photos)
+            p.IsInCurrentShow = ids.Contains(p.Id);
+    }
+
+    private Window? GetMainWindow()
+    {
+        return Application.Current?.ApplicationLifetime
+            is IClassicDesktopStyleApplicationLifetime desktop
+            ? desktop.MainWindow : null;
+    }
+
+
+    // ----- Внутреннее ---------------------------------------------------
     public string PositionInfo
     {
         get
@@ -527,6 +623,7 @@ public partial class MainWindowViewModel : ObservableObject
             path = Path.Combine(dir, $"{baseName}_{n++}{ext}");
         return path;
     }
+
 }
 
 /*

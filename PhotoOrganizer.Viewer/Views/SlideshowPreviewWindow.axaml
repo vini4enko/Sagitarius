@@ -1,0 +1,18 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:PhotoOrganizer.Viewer.ViewModels"
+        x:Class="PhotoOrganizer.Viewer.Views.SlideshowPreviewWindow"
+        x:DataType="vm:SlideshowPreviewViewModel"
+        Title="Предпросмотр"
+        Background="Black"
+        WindowState="FullScreen">
+    <Grid>
+        <Image Source="{Binding CurrentImage}" Stretch="Uniform"/>
+        <TextBlock Text="{Binding CurrentCaption}"
+                   HorizontalAlignment="Center" VerticalAlignment="Bottom"
+                   Margin="0,0,0,40" Foreground="White" FontSize="20"/>
+        <TextBlock Text="{Binding StatusText}"
+                   HorizontalAlignment="Left" VerticalAlignment="Top"
+                   Margin="16" Foreground="#CCFFFFFF" FontSize="14"/>
+    </Grid>
+</Window>

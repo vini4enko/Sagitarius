@@ -9,11 +9,19 @@ namespace PhotoOrganizer.Viewer.ViewModels;
 public partial class PhotoItemViewModel : ObservableObject
 {
     public PhotoListItem Model { get; }
-
-    [ObservableProperty]
-    private Bitmap? _thumbnail;
-    [ObservableProperty] private bool _isCurrent;   // фото сейчас показывается справа
-    [ObservableProperty] private bool _isMarked;    // фото отмечено для групповой операции
+    public PhotoItemViewModel(PhotoListItem model)
+    {
+        Model = model;
+        if (model.ThumbnailData is { Length: > 0 })
+        {
+            try
+            {
+                using var ms = new MemoryStream(model.ThumbnailData);
+                _thumbnail = new Bitmap(ms);
+            }
+            catch { /* битый файл — оставляем null */ }
+        }
+    }
     public bool IsCurrentOrMarked => IsCurrent || IsMarked;
     public Guid Id => Model.Id;
     public string? Title => Model.Title;
@@ -28,18 +36,8 @@ public partial class PhotoItemViewModel : ObservableObject
     public string AlbumsDisplay => Model.Albums.Count == 0
                                      ? "—"
                                      : string.Join(", ", Model.Albums);
-
-    public PhotoItemViewModel(PhotoListItem model)
-    {
-        Model = model;
-        if (model.ThumbnailData is { Length: > 0 })
-        {
-            try
-            {
-                using var ms = new MemoryStream(model.ThumbnailData);
-                _thumbnail = new Bitmap(ms);
-            }
-            catch { /* битый файл — оставляем null */ }
-        }
-    }
+    [ObservableProperty] private Bitmap? _thumbnail;
+    [ObservableProperty] private bool _isCurrent;   // фото сейчас показывается справа
+    [ObservableProperty] private bool _isMarked;    // фото отмечено для групповой операции
+    [ObservableProperty] private bool _isInCurrentShow;
 }

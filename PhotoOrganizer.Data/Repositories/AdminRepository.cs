@@ -627,6 +627,271 @@ public class AdminRepository : IDisposable
         await tx.CommitAsync();
         return result;
     }
+
+    // ========================================================================
+    // Шоу
+    // ========================================================================
+
+    public async Task<long> CreateShowAsync(
+        string name, long authorId, string? description = null,
+        int intervalSeconds = 5, bool loop = true, bool randomOrder = false,
+        string transition = "cut", bool showCaptions = true)
+    {
+        await using var tx = await _connection.BeginTransactionAsync();
+        await DatabaseConfig.SetSessionContextAsync(_connection, tx, 1, 1);
+
+        const string sql = @"
+        INSERT INTO shows(name, author_id, description, interval_seconds,
+                          loop, random_order, transition, show_captions)
+        VALUES (@name, @author, @desc, @interval, @loop, @rand, @trans, @caps)
+        RETURNING id;";
+
+        await using var cmd = new NpgsqlCommand(sql, _connection, tx);
+        cmd.Parameters.AddWithValue("name", name);
+        cmd.Parameters.AddWithValue("author", authorId);
+        cmd.Parameters.AddWithValue("desc", (object?)description ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("interval", intervalSeconds);
+        cmd.Parameters.AddWithValue("loop", loop);
+        cmd.Parameters.AddWithValue("rand", randomOrder);
+        cmd.Parameters.AddWithValue("trans", transition);
+        cmd.Parameters.AddWithValue("caps", showCaptions);
+
+        try
+        {
+            var id = (long)(await cmd.ExecuteScalarAsync())!;
+            await tx.CommitAsync();
+            return id;
+        }
+        catch (PostgresException ex) when (ex.SqlState == "23505")
+        {
+            throw new InvalidOperationException($"Шоу с именем '{name}' уже существует.", ex);
+        }
+    }
+
+    public async Task<List<ShowListItem>> GetShowsAsync()
+    {
+        await using var tx = await _connection.BeginTransactionAsync();
+        await DatabaseConfig.SetSessionContextAsync(_connection, tx, 1, 1);
+
+        const string sql = @"
+        SELECT s.id, s.name, s.description, s.author_id, u.login,
+               s.created_at, s.interval_seconds,
+               (SELECT count(*) FROM show_photos sp WHERE sp.show_id = s.id)
+        FROM   shows s
+        LEFT JOIN app_users u ON u.id = s.author_id
+        ORDER BY s.created_at DESC;";
+
+        var list = new List<ShowListItem>();
+        await using (var cmd = new NpgsqlCommand(sql, _connection, tx))
+        await using (var reader = await cmd.ExecuteReaderAsync())
+        {
+            while (await reader.ReadAsync())
+            {
+                list.Add(new ShowListItem
+                {
+                    Id = reader.GetInt64(0),
+                    Name = reader.GetString(1),
+                    Description = reader.IsDBNull(2) ? null : reader.GetString(2),
+                    AuthorId = reader.GetInt64(3),
+                    AuthorLogin = reader.IsDBNull(4) ? null : reader.GetString(4),
+                    CreatedAt = reader.GetDateTime(5),
+                    IntervalSeconds = reader.GetInt32(6),
+                    PhotoCount = (int)reader.GetInt64(7)
+                });
+            }
+        }
+        await tx.CommitAsync();
+        return list;
+    }
+
+    public async Task<ShowDetail?> GetShowAsync(long id)
+    {
+        await using var tx = await _connection.BeginTransactionAsync();
+        await DatabaseConfig.SetSessionContextAsync(_connection, tx, 1, 1);
+
+        const string sql = @"
+        SELECT s.id, s.name, s.description, s.author_id,
+               s.created_at, s.updated_at, s.interval_seconds,
+               s.loop, s.random_order, s.transition, s.show_captions,
+               (SELECT count(*) FROM show_photos sp WHERE sp.show_id = s.id)
+        FROM   shows s WHERE s.id = @id;";
+
+        ShowDetail? result = null;
+        await using (var cmd = new NpgsqlCommand(sql, _connection, tx))
+        {
+            cmd.Parameters.AddWithValue("id", id);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            if (await reader.ReadAsync())
+            {
+                result = new ShowDetail
+                {
+                    Id = reader.GetInt64(0),
+                    Name = reader.GetString(1),
+                    Description = reader.IsDBNull(2) ? null : reader.GetString(2),
+                    AuthorId = reader.GetInt64(3),
+                    CreatedAt = reader.GetDateTime(4),
+                    UpdatedAt = reader.GetDateTime(5),
+                    IntervalSeconds = reader.GetInt32(6),
+                    Loop = reader.GetBoolean(7),
+                    RandomOrder = reader.GetBoolean(8),
+                    Transition = reader.GetString(9),
+                    ShowCaptions = reader.GetBoolean(10),
+                    PhotoCount = (int)reader.GetInt64(11)
+                };
+            }
+        }
+        await tx.CommitAsync();
+        return result;
+    }
+
+    public async Task UpdateShowAsync(ShowDetail show)
+    {
+        await using var tx = await _connection.BeginTransactionAsync();
+        await DatabaseConfig.SetSessionContextAsync(_connection, tx, 1, 1);
+
+        const string sql = @"
+        UPDATE shows SET
+            name = @name, description = @desc,
+            interval_seconds = @interval, loop = @loop,
+            random_order = @rand, transition = @trans,
+            show_captions = @caps
+        WHERE id = @id;";
+
+        await using var cmd = new NpgsqlCommand(sql, _connection, tx);
+        cmd.Parameters.AddWithValue("id", show.Id);
+        cmd.Parameters.AddWithValue("name", show.Name);
+        cmd.Parameters.AddWithValue("desc", (object?)show.Description ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("interval", show.IntervalSeconds);
+        cmd.Parameters.AddWithValue("loop", show.Loop);
+        cmd.Parameters.AddWithValue("rand", show.RandomOrder);
+        cmd.Parameters.AddWithValue("trans", show.Transition);
+        cmd.Parameters.AddWithValue("caps", show.ShowCaptions);
+
+        await cmd.ExecuteNonQueryAsync();
+        await tx.CommitAsync();
+    }
+
+    public async Task DeleteShowAsync(long id)
+    {
+        await using var tx = await _connection.BeginTransactionAsync();
+        await DatabaseConfig.SetSessionContextAsync(_connection, tx, 1, 1);
+
+        await using var cmd = new NpgsqlCommand(
+            "DELETE FROM shows WHERE id = @id;", _connection, tx);
+        cmd.Parameters.AddWithValue("id", id);
+        await cmd.ExecuteNonQueryAsync();
+        await tx.CommitAsync();
+    }
+
+    public async Task AddPhotoToShowAsync(long showId, Guid photoId)
+    {
+        await using var tx = await _connection.BeginTransactionAsync();
+        await DatabaseConfig.SetSessionContextAsync(_connection, tx, 1, 1);
+
+        await using var cmd = new NpgsqlCommand(
+            "CALL add_photo_to_show(@s, @p);", _connection, tx);
+        cmd.Parameters.AddWithValue("s", showId);
+        cmd.Parameters.AddWithValue("p", photoId);
+        await cmd.ExecuteNonQueryAsync();
+        await tx.CommitAsync();
+    }
+
+    public async Task RemovePhotoFromShowAsync(long showId, Guid photoId)
+    {
+        await using var tx = await _connection.BeginTransactionAsync();
+        await DatabaseConfig.SetSessionContextAsync(_connection, tx, 1, 1);
+
+        await using var cmd = new NpgsqlCommand(
+            "DELETE FROM show_photos WHERE show_id = @s AND photo_id = @p;",
+            _connection, tx);
+        cmd.Parameters.AddWithValue("s", showId);
+        cmd.Parameters.AddWithValue("p", photoId);
+        await cmd.ExecuteNonQueryAsync();
+        await tx.CommitAsync();
+    }
+
+    public async Task MovePhotoInShowAsync(long showId, Guid photoId, int direction)
+    {
+        await using var tx = await _connection.BeginTransactionAsync();
+        await DatabaseConfig.SetSessionContextAsync(_connection, tx, 1, 1);
+
+        await using var cmd = new NpgsqlCommand(
+            "CALL move_show_photo(@s, @p, @d);", _connection, tx);
+        cmd.Parameters.AddWithValue("s", showId);
+        cmd.Parameters.AddWithValue("p", photoId);
+        cmd.Parameters.AddWithValue("d", direction);
+        await cmd.ExecuteNonQueryAsync();
+        await tx.CommitAsync();
+    }
+
+    public async Task<List<ShowPhotoItem>> GetShowPhotosOrderedAsync(long showId)
+    {
+        await using var tx = await _connection.BeginTransactionAsync();
+        await DatabaseConfig.SetSessionContextAsync(_connection, tx, 1, 1);
+
+        const string sql = @"
+        SELECT sp.photo_id, sp.position,
+               p.title, p.object_key,
+               a.author_name
+        FROM   show_photos sp
+        JOIN   photos p      ON p.id = sp.photo_id
+        LEFT JOIN attributes a ON a.photo_id = p.id
+        WHERE  sp.show_id = @s
+        ORDER BY sp.position;";
+
+        var list = new List<ShowPhotoItem>();
+        await using (var cmd = new NpgsqlCommand(sql, _connection, tx))
+        {
+            cmd.Parameters.AddWithValue("s", showId);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                list.Add(new ShowPhotoItem
+                {
+                    PhotoId = reader.GetGuid(0),
+                    Position = reader.GetInt32(1),
+                    Title = reader.IsDBNull(2) ? null : reader.GetString(2),
+                    ObjectKey = reader.GetString(3),
+                    AuthorName = reader.IsDBNull(4) ? null : reader.GetString(4)
+                });
+            }
+        }
+        await tx.CommitAsync();
+        return list;
+    }
+
+    public async Task<int> GetShowPhotoCountAsync(long showId)
+    {
+        await using var tx = await _connection.BeginTransactionAsync();
+        await DatabaseConfig.SetSessionContextAsync(_connection, tx, 1, 1);
+
+        await using var cmd = new NpgsqlCommand(
+            "SELECT count(*) FROM show_photos WHERE show_id = @s;", _connection, tx);
+        cmd.Parameters.AddWithValue("s", showId);
+        var n = (long)(await cmd.ExecuteScalarAsync())!;
+        await tx.CommitAsync();
+        return (int)n;
+    }
+
+    /// <summary>Список photo_id, входящих в шоу (для подсветки в главном окне).</summary>
+    public async Task<HashSet<Guid>> GetShowPhotoIdsAsync(long showId)
+    {
+        await using var tx = await _connection.BeginTransactionAsync();
+        await DatabaseConfig.SetSessionContextAsync(_connection, tx, 1, 1);
+
+        var set = new HashSet<Guid>();
+        await using (var cmd = new NpgsqlCommand(
+            "SELECT photo_id FROM show_photos WHERE show_id = @s;", _connection, tx))
+        {
+            cmd.Parameters.AddWithValue("s", showId);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+                set.Add(reader.GetGuid(0));
+        }
+        await tx.CommitAsync();
+        return set;
+    }
+
     public void Dispose()
     {
         _connection?.Dispose();

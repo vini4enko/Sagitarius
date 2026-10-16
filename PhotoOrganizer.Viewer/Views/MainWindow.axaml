@@ -9,7 +9,7 @@
         x:Class="PhotoOrganizer.Viewer.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
         Title="PhotoOrganizer Viewer"
-        Width="1100" Height="900" >
+        Width="1500" Height="900" >
 
     <Window.Resources>
         <local:BusyCursorConverter x:Key="BusyCursorConverter" />
@@ -78,8 +78,12 @@
         <Style Selector="Border.toolbar">
             <Setter Property="BoxShadow" Value="0 2 4 0 #20000000"/>
         </Style>
-    </Window.Styles>
 
+        <Style Selector="Border.thumb.in-show">
+            <Setter Property="Background"  Value="#D4F1D4"/>
+            <Setter Property="BorderBrush" Value="#2E7D32"/>
+        </Style>
+    </Window.Styles>
 
     <Window.KeyBindings>
         <KeyBinding Gesture="Left"     Command="{Binding PreviousPhotoCommand}"/>
@@ -93,7 +97,7 @@
     <DockPanel VerticalAlignment="Top">
         <!-- Панель команд -->
         <Border DockPanel.Dock="Top" Background="#F0F0F0" Padding="8">
-            <Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto,Auto,Auto,Auto">
+            <Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto">
                 <Button Grid.Column="0" Content="◀ Пред"
                         Command="{Binding PreviousPhotoCommand}"
                         IsEnabled="{Binding CanPreviousPhoto}"
@@ -111,14 +115,26 @@
                 <Button Grid.Column="4" Content="Снять отметки"
                         Command="{Binding ClearMarksCommand}"
                         Margin="0,0,4,0"/>
-
                 <Button Grid.Column="5" Content="В буфер"
                         Command="{Binding CopyCurrentToClipboardCommand}"
                         Margin="0,0,4,0"/>
                 <Button Grid.Column="6" Content="На диск"
                         Command="{Binding CopyMarkedToDiskAsync}"
                         Margin="0,0,8,0"/>
-                <ToggleButton Grid.Column="7" Content="Фильтр"
+                <ToggleButton Grid.Column="7" Content="Отбор в шоу"
+                              IsChecked="{Binding IsSelectionMode}"
+                              Command="{Binding ToggleSelectionModeCommand}"
+                              Margin="0,0,4,0"/>
+                <Button Grid.Column="8" Content="Менеджер шоу"
+                        Command="{Binding OpenShowManagerCommand}"
+                        Margin="0,0,8,0"/>
+                <TextBlock Grid.Column="9" VerticalAlignment="Center"
+                           Text="{Binding CurrentShow.Name, FallbackValue='Шоу не выбрано'}"
+                           Margin="0,0,4,0"/>
+                <TextBlock Grid.Column="10" VerticalAlignment="Center"
+                           Text="{Binding CurrentShowPhotoCount, StringFormat='({0} фото)'}"
+                           Margin="0,0,8,0"/>
+                <ToggleButton Grid.Column="11" Content="Фильтр"
                               IsChecked="{Binding FilterPanelExpanded}"
                               Margin="0,0,4,0"/>
             </Grid>
@@ -192,6 +208,8 @@
                                         <Border Classes="thumb"
                                                 Classes.current="{Binding IsCurrent}"
                                                 Classes.marked="{Binding IsMarked}"
+                                                Classes.in-show="{Binding IsInCurrentShow}"
+
                                                 Margin="2" Padding="2" CornerRadius="2"
                                                 PointerPressed="OnThumbnailClicked">
                                             <StackPanel Width="120">
@@ -200,20 +218,26 @@
                                                        Height="90" Stretch="Uniform"/>
 
                                                 <!-- Нижняя строка: чекбокс слева, заголовок справа -->
-                                                <Grid ColumnDefinitions="Auto,*" Margin="0,2,0,0">
+                                                <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,2,0,0">
                                                     <CheckBox Grid.Column="0"
                                                               IsChecked="{Binding IsMarked}"
                                                               Margin="0,0,4,0"
                                                               Padding="0"
                                                               MinWidth="0"
                                                               VerticalAlignment="Center"/>
-
                                                     <TextBlock Grid.Column="1"
                                                                Text="{Binding Title}"
                                                                TextWrapping="NoWrap"
                                                                TextTrimming="CharacterEllipsis"
                                                                FontSize="11"
                                                                VerticalAlignment="Center"/>
+                                                    <CheckBox Grid.Column="2"
+                                                              IsChecked="{Binding IsInCurrentShow}"
+                                                              Click="OnThumbnailCheckBoxClicked"
+                                                              Margin="0,0,4,0"
+                                                              Padding="0"
+                                                              MinWidth="0"
+                                                              VerticalAlignment="Center" />
                                                 </Grid>
                                             </StackPanel>
                                         </Border>

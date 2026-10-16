@@ -155,6 +155,71 @@ CREATE TABLE attributes (
                ('image/webp','image/jpeg','image/png'))
 );
 
+-- Шоу: административная сущность
+CREATE TABLE shows (
+    id               bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    name             text   UNIQUE NOT NULL,
+    description      text,
+    author_id        bigint NOT NULL REFERENCES app_users(id),
+    created_at       timestamptz NOT NULL DEFAULT now(),
+    updated_at       timestamptz NOT NULL DEFAULT now(),
+
+    interval_seconds int NOT NULL DEFAULT 5
+                     CHECK (interval_seconds BETWEEN 1 AND 600),
+    loop             boolean NOT NULL DEFAULT true,
+    random_order     boolean NOT NULL DEFAULT false,
+    transition       text NOT NULL DEFAULT 'cut'
+                     CHECK (transition IN ('cut','fade')),
+    show_captions    boolean NOT NULL DEFAULT true,
+
+    extra            jsonb NOT NULL DEFAULT '{}'::jsonb,
+    CONSTRAINT shows_extra_is_object CHECK (jsonb_typeof(extra) = 'object')
+);
+
+CREATE INDEX idx_shows_author ON shows(author_id);
+
+-- Фотографии шоу с порядком
+CREATE TABLE show_photos (
+    show_id  bigint NOT NULL REFERENCES shows(id)  ON DELETE CASCADE,
+    photo_id uuid   NOT NULL REFERENCES photos(id) ON DELETE CASCADE,
+    position int    NOT NULL,
+    PRIMARY KEY (show_id, photo_id),
+    CONSTRAINT show_photos_position_unique UNIQUE (show_id, position)
+                                           DEFERRABLE INITIALLY IMMEDIATE,
+    CONSTRAINT show_photos_position_positive CHECK (position >= 0)
+);
+
+CREATE INDEX idx_show_photos_show  ON show_photos(show_id, position);
+CREATE INDEX idx_show_photos_photo ON show_photos(photo_id);
+
+-- Триггер на updated_at
+CREATE TRIGGER trg_shows_updated_at
+BEFORE UPDATE ON shows
+FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+-- RLS и права
+ALTER TABLE shows       ENABLE ROW LEVEL SECURITY;
+ALTER TABLE show_photos ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY shows_admin_all ON shows
+FOR ALL TO app_admin USING (true) WITH CHECK (true);
+
+CREATE POLICY show_photos_admin_all ON show_photos
+FOR ALL TO app_admin USING (true) WITH CHECK (true);
+
+REVOKE ALL ON shows, show_photos FROM app_user;
+
+ALTER TABLE shows       OWNER TO app_owner;
+ALTER TABLE show_photos OWNER TO app_owner;
+
+-- Владелец должен иметь USAGE на схему (уже есть, но на всякий)
+GRANT USAGE ON SCHEMA public TO app_owner;
+
+-- Права администратора
+GRANT SELECT, INSERT, UPDATE, DELETE ON shows       TO app_admin;
+GRANT SELECT, INSERT, UPDATE, DELETE ON show_photos TO app_admin;
+GRANT USAGE, SELECT ON SEQUENCE shows_id_seq        TO app_admin;
+
 -- Очередь компенсирующих действий для S3-объектов.
 CREATE TABLE cleanup_queue (
     id            bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -729,6 +794,67 @@ BEGIN
 END;
 $$;
 
+--процедура перемещения фотографий вверх/вниз
+CREATE OR REPLACE PROCEDURE move_show_photo(
+    p_show_id    bigint,
+    p_photo_id   uuid,
+    p_direction  int    -- -1 = вверх, +1 = вниз
+)
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+DECLARE
+    v_current_pos  int;
+    v_neighbor_id  uuid;
+    v_neighbor_pos int;
+BEGIN
+    IF p_direction NOT IN (-1, 1) THEN
+        RAISE EXCEPTION 'direction must be -1 or +1' USING ERRCODE = '22023';
+    END IF;
+
+    IF NOT pg_has_role(session_user, 'app_admin', 'MEMBER') THEN
+        RAISE EXCEPTION 'only app_admin may modify shows' USING ERRCODE = '42501';
+    END IF;
+
+    SELECT position INTO v_current_pos
+    FROM   show_photos
+    WHERE  show_id = p_show_id AND photo_id = p_photo_id;
+
+    IF v_current_pos IS NULL THEN
+        RAISE EXCEPTION 'photo % not in show %', p_photo_id, p_show_id
+            USING ERRCODE = 'P0002';
+    END IF;
+
+    SELECT photo_id, position
+    INTO   v_neighbor_id, v_neighbor_pos
+    FROM   show_photos
+    WHERE  show_id = p_show_id
+      AND  CASE WHEN p_direction = 1 THEN position > v_current_pos
+                ELSE position < v_current_pos END
+    ORDER BY CASE WHEN p_direction = 1 THEN position END ASC,
+             CASE WHEN p_direction = -1 THEN position END DESC
+    LIMIT 1;
+
+    IF v_neighbor_id IS NULL THEN
+        RETURN;   -- уже на краю
+    END IF;
+
+    -- Обмен через временную позицию -1
+    UPDATE show_photos SET position = -1
+     WHERE show_id = p_show_id AND photo_id = p_photo_id;
+
+    UPDATE show_photos SET position = v_current_pos
+     WHERE show_id = p_show_id AND photo_id = v_neighbor_id;
+
+    UPDATE show_photos SET position = v_neighbor_pos
+     WHERE show_id = p_show_id AND photo_id = p_photo_id;
+END;
+$$;
+
+ALTER PROCEDURE move_show_photo(bigint, uuid, int) OWNER TO app_owner;
+REVOKE ALL   ON PROCEDURE move_show_photo(bigint, uuid, int) FROM PUBLIC;
+GRANT EXECUTE ON PROCEDURE move_show_photo(bigint, uuid, int) TO app_admin;
+
 -- get_photo_links: связи заданной фотографии, доступные пользователю
 CREATE OR REPLACE FUNCTION get_photo_links(p_photo_id uuid)
 RETURNS TABLE (id_f uuid, id_b uuid, comment text)
@@ -741,6 +867,36 @@ AS $$
       AND  app_can_view(l.id_f)
       AND  app_can_view(l.id_b);
 $$;
+
+-- Процедура добавления фотографии в шоу с авто-позицией
+CREATE OR REPLACE PROCEDURE add_photo_to_show(
+    p_show_id  bigint,
+    p_photo_id uuid
+)
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+DECLARE
+    v_next_pos int;
+BEGIN
+    IF NOT pg_has_role(session_user, 'app_admin', 'MEMBER') THEN
+        RAISE EXCEPTION 'only app_admin may modify shows' USING ERRCODE = '42501';
+    END IF;
+
+    SELECT COALESCE(MAX(position), 0) + 10 INTO v_next_pos
+    FROM   show_photos WHERE show_id = p_show_id;
+
+    INSERT INTO show_photos(show_id, photo_id, position)
+    VALUES (p_show_id, p_photo_id, v_next_pos)
+    ON CONFLICT (show_id, photo_id) DO NOTHING;
+END;
+$$;
+
+ALTER PROCEDURE add_photo_to_show(bigint, uuid) OWNER TO app_owner;
+REVOKE ALL   ON PROCEDURE add_photo_to_show(bigint, uuid) FROM PUBLIC;
+GRANT EXECUTE ON PROCEDURE add_photo_to_show(bigint, uuid) TO app_admin;
+
+
 
 -- get_photo_thumbnail: миниатюра, если фотография видна пользователю
 CREATE OR REPLACE FUNCTION get_photo_thumbnail(p_photo_id uuid)

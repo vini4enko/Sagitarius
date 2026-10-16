@@ -71,6 +71,17 @@ public partial class MainWindow : Window
             };
         }
     }
+    private void OnThumbnailCheckBoxClicked(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainWindowViewModel vm) return;
+        if (!vm.IsSelectionMode) return;
+
+        if (sender is CheckBox { DataContext: PhotoItemViewModel item })
+        {
+            _ = vm.TogglePhotoInShowAsync(item);
+            e.Handled = true;
+        }
+    }
     // Вызвать один раз при инициализации приложения.
     static void CleanupTempFolder()
     {

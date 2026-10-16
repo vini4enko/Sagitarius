@@ -1,9 +1,12 @@
 <Solution>
-  <Project Path="MyPhoto/ExifApp.csproj" />
+  <Folder Name="/Элементы решения/">
+    <File Path="deploy.sql" />
+  </Folder>
+  <Project Path="MyPhoto/PhotoOrganizer.Uploader.csproj" />
   <Project Path="PhotoOrganizer.Data/PhotoOrganizer.Data.csproj" />
   <Project Path="PhotoOrganizer.Storage.Tests/PhotoOrganizer.Storage.Tests.csproj" />
   <Project Path="PhotoOrganizer.Storage/PhotoOrganizer.Storage.csproj" />
-  <Project Path="PhotoOrganizer.Uploader/PhotoOrganizer.Uploader.csproj" />
+  <Project Path="PhotoOrganizer.Uploader/PhotoOrganizer.Uploader.Test.csproj" />
   <Project Path="PhotoOrganizer.Viewer/PhotoOrganizer.Viewer.csproj" />
   <Project Path="PhotoOrganizer/PhotoOrganizer.csproj" />
 </Solution>
