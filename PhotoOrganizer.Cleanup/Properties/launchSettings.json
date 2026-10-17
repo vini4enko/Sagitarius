@@ -1,0 +1,7 @@
+{
+  "profiles": {
+    "PhotoOrganizer.Cleanup": {
+      "commandName": "Project"
+    }
+  }
+}

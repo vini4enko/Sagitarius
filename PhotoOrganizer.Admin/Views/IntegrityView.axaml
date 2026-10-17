@@ -1,0 +1,28 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+        x:Class="PhotoOrganizer.Admin.Views.IntegrityView"
+        Title="IntegrityView">
+    <Grid RowDefinitions="Auto,Auto,*,Auto,*" Margin="8">
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="4">
+            <Button Content="Проверить" Command="{Binding CheckCommand}"/>
+            <Button Content="Удалить S3-сироты" Command="{Binding DeleteOrphanedS3Command}"/>
+            <Button Content="Выгрузить S3-сироты" Command="{Binding ExportOrphanedS3Command}"/>
+            <Button Content="Удалить записи без файлов" Command="{Binding DeleteMissingDbRecordsCommand}"/>
+        </StackPanel>
+        <TextBlock Grid.Row="1" Text="{Binding StatusText}" Margin="0,4"/>
+        <TextBlock Grid.Row="2" Text="Объекты в S3 без записи в БД:" FontWeight="Bold"/>
+        <ListBox Grid.Row="3" ItemsSource="{Binding OrphanedS3}" Height="150"/>
+        <TextBlock Grid.Row="4" Text="Записи в photos без объекта в S3:" FontWeight="Bold"/>
+        <DataGrid Grid.Row="5" ItemsSource="{Binding MissingInS3}" AutoGenerateColumns="False"
+                  IsReadOnly="True" Height="150">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="ID" Binding="{Binding Id}"/>
+                <DataGridTextColumn Header="ObjectKey" Binding="{Binding ObjectKey}"/>
+                <DataGridTextColumn Header="Title" Binding="{Binding Title}"/>
+            </DataGrid.Columns>
+        </DataGrid>
+    </Grid>
+</Window>

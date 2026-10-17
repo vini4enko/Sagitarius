@@ -1,8 +1,11 @@
 <Solution>
   <Folder Name="/Элементы решения/">
+    <File Path="appsettings.Shared.json" />
     <File Path="deploy.sql" />
   </Folder>
   <Project Path="MyPhoto/PhotoOrganizer.Uploader.csproj" />
+  <Project Path="PhotoOrganizer.Admin/PhotoOrganizer.Admin.csproj" Id="8099e402-ea5f-4810-9d43-5117542725f2" />
+  <Project Path="PhotoOrganizer.Cleanup/PhotoOrganizer.Cleanup.csproj" Id="7ac68651-142b-4a09-b555-77a846de341d" />
   <Project Path="PhotoOrganizer.Data/PhotoOrganizer.Data.csproj" />
   <Project Path="PhotoOrganizer.Storage.Tests/PhotoOrganizer.Storage.Tests.csproj" />
   <Project Path="PhotoOrganizer.Storage/PhotoOrganizer.Storage.csproj" />

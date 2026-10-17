@@ -1,0 +1,29 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+        x:Class="PhotoOrganizer.Admin.Views.AuditView"
+        Title="AuditView">
+  <Grid RowDefinitions="Auto,Auto,*" Margin="8">
+    <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="8">
+        <ToggleSwitch IsChecked="{Binding IsAuditEnabled, Mode=TwoWay}"
+                      OnContent="Аудит включён" OffContent="Аудит отключён"
+                      Command="{Binding ToggleAuditCommand}"/>
+        <TextBlock Text="Таблица:" VerticalAlignment="Center"/>
+        <ComboBox ItemsSource="{Binding Tables}" SelectedItem="{Binding FilterTable}" Width="150"/>
+        <Button Content="Обновить" Command="{Binding LoadCommand}"/>
+    </StackPanel>
+    <TextBlock Grid.Row="1" Text="{Binding StatusText}" Margin="0,4"/>
+    <DataGrid Grid.Row="2" ItemsSource="{Binding Entries}" AutoGenerateColumns="False" IsReadOnly="True">
+        <DataGrid.Columns>
+            <DataGridTextColumn Header="Время" Binding="{Binding ChangedAt}"/>
+            <DataGridTextColumn Header="Пользователь" Binding="{Binding ChangedBy}"/>
+            <DataGridTextColumn Header="Операция" Binding="{Binding Operation}"/>
+            <DataGridTextColumn Header="Таблица" Binding="{Binding TableName}"/>
+            <DataGridTextColumn Header="ID записи" Binding="{Binding RecordId}"/>
+            <DataGridTextColumn Header="Изменения" Binding="{Binding ChangeDiff}" Width="*"/>
+        </DataGrid.Columns>
+    </DataGrid>
+</Grid>
+</Window>

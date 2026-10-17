@@ -1,0 +1,1 @@
+d:\Sagitarius\PhotoOrganizer.Storage.Tests\bin\Debug\net10.0\PhotoOrganizer.Storage.Tests.exe -d

@@ -1,0 +1,36 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+        x:Class="PhotoOrganizer.Admin.Views.UsersView"
+        Title="UsersView">
+    <Grid RowDefinitions="Auto,*,Auto,*" Margin="8">
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="4">
+            <Button Content="Обновить" Command="{Binding LoadCommand}"/>
+            <Button Content="Регистрация" Command="{Binding RegisterUserCommand}"/>
+            <Button Content="Удалить" Command="{Binding DeleteUserCommand}"/>
+            <Button Content="Завершить сессию" Command="{Binding TerminateSessionCommand}"/>
+        </StackPanel>
+        <DataGrid Grid.Row="1" ItemsSource="{Binding Users}" SelectedItem="{Binding SelectedUser}"
+                  AutoGenerateColumns="False" IsReadOnly="True" Margin="0,4">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="ID" Binding="{Binding Id}"/>
+                <DataGridTextColumn Header="Логин" Binding="{Binding Login}"/>
+                <DataGridTextColumn Header="Роли" Binding="{Binding RolesDisplay}"/>
+                <DataGridCheckBoxColumn Header="Активен" Binding="{Binding IsActive}"/>
+            </DataGrid.Columns>
+        </DataGrid>
+        <TextBlock Grid.Row="2" Text="{Binding StatusText}" Margin="0,4"/>
+        <DataGrid Grid.Row="3" ItemsSource="{Binding Sessions}" SelectedItem="{Binding SelectedSession}"
+                  AutoGenerateColumns="False" IsReadOnly="True" Margin="0,4">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="PID" Binding="{Binding Pid}"/>
+                <DataGridTextColumn Header="Пользователь" Binding="{Binding UserName}"/>
+                <DataGridTextColumn Header="Приложение" Binding="{Binding AppName}"/>
+                <DataGridTextColumn Header="Состояние" Binding="{Binding State}"/>
+                <DataGridTextColumn Header="Начало" Binding="{Binding BackendStart}"/>
+            </DataGrid.Columns>
+        </DataGrid>
+    </Grid>
+</Window>

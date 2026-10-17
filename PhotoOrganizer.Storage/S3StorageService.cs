@@ -70,6 +70,76 @@ public class S3StorageService : IDisposable
             _options.BucketName, objectKey, ct);
     }
 
+
+    /// <summary>
+    /// Возвращает список всех ключей в бакете (с пагинацией).
+    /// </summary>
+    public async Task<List<string>> ListAllKeysAsync(CancellationToken ct = default)
+    {
+        var keys = new List<string>();
+        string? continuationToken = null;
+
+        do
+        {
+            var request = new ListObjectsV2Request
+            {
+                BucketName = _options.BucketName,
+                ContinuationToken = continuationToken
+            };
+
+            var response = await _s3Client.ListObjectsV2Async(request, ct);
+            foreach (var obj in response.S3Objects)
+                keys.Add(obj.Key);
+
+            continuationToken = response.IsTruncated == true
+                ? response.NextContinuationToken
+                : null;
+        }
+        while (continuationToken is not null);
+
+        return keys;
+    }
+
+    /// <summary>
+    /// Удаляет объекты батчами по 1000 (лимит AWS S3 DeleteObjects).
+    /// Возвращает фактическое количество удалённых ключей.
+    /// </summary>
+    public async Task<int> DeleteManyAsync(
+        IEnumerable<string> keys, CancellationToken ct = default)
+    {
+        int total = 0;
+        var batch = new List<KeyVersion>(1000);
+
+        foreach (var key in keys)
+        {
+            batch.Add(new KeyVersion { Key = key });
+            if (batch.Count == 1000)
+            {
+                await DeleteBatchAsync(batch, ct);
+                total += batch.Count;
+                batch.Clear();
+            }
+        }
+
+        if (batch.Count > 0)
+        {
+            await DeleteBatchAsync(batch, ct);
+            total += batch.Count;
+        }
+
+        return total;
+    }
+
+    private async Task DeleteBatchAsync(List<KeyVersion> batch, CancellationToken ct)
+    {
+        var request = new DeleteObjectsRequest
+        {
+            BucketName = _options.BucketName,
+            Objects = batch
+        };
+        await _s3Client.DeleteObjectsAsync(request, ct);
+    }
+
     public void Dispose()
     {
         _s3Client?.Dispose();

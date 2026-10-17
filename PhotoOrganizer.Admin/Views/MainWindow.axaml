@@ -1,0 +1,32 @@
+﻿<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:PhotoOrganizer.Admin.ViewModels"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+        x:Class="PhotoOrganizer.Admin.Views.MainWindow"
+        x:DataType="vm:MainViewModel"
+        Icon="/Assets/avalonia-logo.ico"
+        Title="PhotoOrganizer.Admin">
+
+    <Design.DataContext>
+        <!-- This only sets the DataContext for the previewer in an IDE,
+        to set the actual DataContext for runtime, set the DataContext property in code (look at App.axaml.cs) -->
+        <vm:MainViewModel />
+    </Design.DataContext>
+
+    <TabControl>
+        <TabItem Header="Пользователи">
+            <views:UsersView DataContext="{Binding Users}"/>
+        </TabItem>
+        <TabItem Header="Аудит">
+            <views:AuditView DataContext="{Binding Audit}"/>
+        </TabItem>
+        <TabItem Header="Целостность">
+            <views:IntegrityView DataContext="{Binding Integrity}"/>
+        </TabItem>
+        <TabItem Header="Доп. проверки">
+            <views:ExtraChecksView DataContext="{Binding ExtraChecks}"/>
+        </TabItem>
+    </TabControl>
+</Window>

@@ -892,6 +892,234 @@ public class AdminRepository : IDisposable
         return set;
     }
 
+    // ==================== Пользователи и роли ====================
+    public async Task SetUserRoleAsync(long userId, long roleId)
+    {
+        await using var tx = await _connection.BeginTransactionAsync();
+        await DatabaseConfig.SetSessionContextAsync(_connection, tx, 1, 1);
+        const string sql = @"
+        INSERT INTO user_roles(user_id, role_id) VALUES (@u, @r)
+        ON CONFLICT (user_id, role_id) DO NOTHING;";
+        await using var cmd = new NpgsqlCommand(sql, _connection, tx);
+        cmd.Parameters.AddWithValue("u", userId);
+        cmd.Parameters.AddWithValue("r", roleId);
+        await cmd.ExecuteNonQueryAsync();
+        await tx.CommitAsync();
+    }
+
+    public async Task RemoveUserRoleAsync(long userId, long roleId)
+    {
+        await using var tx = await _connection.BeginTransactionAsync();
+        await DatabaseConfig.SetSessionContextAsync(_connection, tx, 1, 1);
+        const string sql = "DELETE FROM user_roles WHERE user_id = @u AND role_id = @r;";
+        await using var cmd = new NpgsqlCommand(sql, _connection, tx);
+        cmd.Parameters.AddWithValue("u", userId);
+        cmd.Parameters.AddWithValue("r", roleId);
+        await cmd.ExecuteNonQueryAsync();
+        await tx.CommitAsync();
+    }
+
+    public async Task<List<AppUser>> GetAllUsersAsync()
+    {
+        await using var tx = await _connection.BeginTransactionAsync();
+        await DatabaseConfig.SetSessionContextAsync(_connection, tx, 1, 1);
+        const string sql = @"
+        SELECT u.id, u.login, u.is_active, u.created_at,
+               COALESCE(array_agg(r.name) FILTER (WHERE r.name IS NOT NULL), '{}') AS roles
+        FROM app_users u
+        LEFT JOIN user_roles ur ON ur.user_id = u.id
+        LEFT JOIN app_roles r  ON r.id = ur.role_id
+        GROUP BY u.id, u.login, u.is_active, u.created_at
+        ORDER BY u.id;";
+        var list = new List<AppUser>();
+        await using (var cmd = new NpgsqlCommand(sql, _connection, tx))
+        await using (var reader = await cmd.ExecuteReaderAsync())
+        {
+            while (await reader.ReadAsync())
+            {
+                list.Add(new AppUser
+                {
+                    Id = reader.GetInt64(0),
+                    Login = reader.GetString(1),
+                    IsActive = reader.GetBoolean(2),
+                    CreatedAt = reader.GetDateTime(3),
+                    Roles = reader.GetFieldValue<string[]>(4)
+                });
+            }
+        }
+        await tx.CommitAsync();
+        return list;
+    }
+
+    // ==================== Сессии ====================
+    public async Task<List<DbSession>> GetActiveSessionsAsync()
+    {
+        await using var tx = await _connection.BeginTransactionAsync();
+        await DatabaseConfig.SetSessionContextAsync(_connection, tx, 1, 1);
+        const string sql = @"
+        SELECT pid, usename, application_name, client_addr,
+               state, query_start, backend_start
+        FROM pg_stat_activity
+        WHERE datname = current_database()
+          AND pid <> pg_backend_pid()
+        ORDER BY backend_start DESC;";
+        var list = new List<DbSession>();
+        await using (var cmd = new NpgsqlCommand(sql, _connection, tx))
+        await using (var reader = await cmd.ExecuteReaderAsync())
+        {
+            while (await reader.ReadAsync())
+            {
+                list.Add(new DbSession
+                {
+                    Pid = reader.GetInt32(0),
+                    UserName = reader.IsDBNull(1) ? null : reader.GetString(1),
+                    AppName = reader.IsDBNull(2) ? null : reader.GetString(2),
+                    ClientAddr = reader.IsDBNull(3) ? null : reader.GetString(3),
+                    State = reader.IsDBNull(4) ? null : reader.GetString(4),
+                    QueryStart = reader.IsDBNull(5) ? null : reader.GetDateTime(5),
+                    BackendStart = reader.IsDBNull(6) ? null : reader.GetDateTime(6)
+                });
+            }
+        }
+        await tx.CommitAsync();
+        return list;
+    }
+
+    public async Task TerminateSessionAsync(int pid)
+    {
+        await using var tx = await _connection.BeginTransactionAsync();
+        await DatabaseConfig.SetSessionContextAsync(_connection, tx, 1, 1);
+        await using var cmd = new NpgsqlCommand("SELECT pg_terminate_backend(@pid);", _connection, tx);
+        cmd.Parameters.AddWithValue("pid", pid);
+        await cmd.ExecuteScalarAsync();
+        await tx.CommitAsync();
+    }
+
+    // ==================== Аудит ====================
+    public async Task SetAuditEnabledAsync(bool enabled)
+    {
+        await using var tx = await _connection.BeginTransactionAsync();
+        await DatabaseConfig.SetSessionContextAsync(_connection, tx, 1, 1);
+        await using var cmd = new NpgsqlCommand("CALL set_audit_enabled(@e);", _connection, tx);
+        cmd.Parameters.AddWithValue("e", enabled);
+        await cmd.ExecuteNonQueryAsync();
+        await tx.CommitAsync();
+    }
+
+    public async Task<bool> IsAuditEnabledAsync()
+    {
+        await using var tx = await _connection.BeginTransactionAsync();
+        await DatabaseConfig.SetSessionContextAsync(_connection, tx, 1, 1);
+        await using var cmd = new NpgsqlCommand(
+            "SELECT value FROM app_settings WHERE key = 'audit_enabled';", _connection, tx);
+        var v = await cmd.ExecuteScalarAsync();
+        await tx.CommitAsync();
+        return v as string == "true";
+    }
+
+    public async Task<List<AuditEntry>> GetAuditLogAsync(
+        string? tableName, DateTime? from, DateTime? to, int limit = 500)
+    {
+        await using var tx = await _connection.BeginTransactionAsync();
+        await DatabaseConfig.SetSessionContextAsync(_connection, tx, 1, 1);
+        const string sql = @"
+        SELECT id, changed_at, changed_by, operation, table_name,
+               record_id, before_data, after_data, change_diff
+        FROM audit_log
+        WHERE (@table IS NULL OR table_name = @table)
+          AND (@from IS NULL OR changed_at >= @from)
+          AND (@to   IS NULL OR changed_at <= @to)
+        ORDER BY changed_at DESC
+        LIMIT @limit;";
+        var list = new List<AuditEntry>();
+        await using (var cmd = new NpgsqlCommand(sql, _connection, tx))
+        {
+            cmd.Parameters.AddWithValue("table", (object?)tableName ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("from", (object?)from ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("to", (object?)to ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("limit", limit);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                list.Add(new AuditEntry
+                {
+                    Id = reader.GetInt64(0),
+                    ChangedAt = reader.GetDateTime(1),
+                    ChangedBy = reader.IsDBNull(2) ? null : reader.GetInt64(2),
+                    Operation = reader.GetString(3),
+                    TableName = reader.GetString(4),
+                    RecordId = reader.GetString(5),
+                    BeforeData = reader.IsDBNull(6) ? null : reader.GetString(6),
+                    AfterData = reader.IsDBNull(7) ? null : reader.GetString(7),
+                    ChangeDiff = reader.IsDBNull(8) ? null : reader.GetString(8)
+                });
+            }
+        }
+        await tx.CommitAsync();
+        return list;
+    }
+
+    // ==================== Целостность (БД-часть) ====================
+    public async Task<List<string>> GetAllPhotoObjectKeysAsync()
+    {
+        await using var tx = await _connection.BeginTransactionAsync();
+        await DatabaseConfig.SetSessionContextAsync(_connection, tx, 1, 1);
+        const string sql = "SELECT object_key FROM photos;";
+        var list = new List<string>();
+        await using (var cmd = new NpgsqlCommand(sql, _connection, tx))
+        await using (var reader = await cmd.ExecuteReaderAsync())
+        {
+            while (await reader.ReadAsync()) list.Add(reader.GetString(0));
+        }
+        await tx.CommitAsync();
+        return list;
+    }
+
+    public async Task<List<PhotoRecordInfo>> GetPhotoRecordsWithoutObjectsAsync(
+        IEnumerable<string> existingKeys)
+    {
+        var keys = existingKeys.ToHashSet();
+        var all = await GetPhotoRecordsAsync();
+        return all.Where(p => !keys.Contains(p.ObjectKey)).ToList();
+    }
+
+    public async Task<List<PhotoRecordInfo>> GetPhotoRecordsAsync()
+    {
+        await using var tx = await _connection.BeginTransactionAsync();
+        await DatabaseConfig.SetSessionContextAsync(_connection, tx, 1, 1);
+        const string sql = @"
+        SELECT p.id, p.object_key, p.title, p.bucket
+        FROM photos p;";
+        var list = new List<PhotoRecordInfo>();
+        await using (var cmd = new NpgsqlCommand(sql, _connection, tx))
+        await using (var reader = await cmd.ExecuteReaderAsync())
+        {
+            while (await reader.ReadAsync())
+            {
+                list.Add(new PhotoRecordInfo
+                {
+                    Id = reader.GetGuid(0),
+                    ObjectKey = reader.GetString(1),
+                    Title = reader.IsDBNull(2) ? null : reader.GetString(2),
+                    Bucket = reader.GetString(3)
+                });
+            }
+        }
+        await tx.CommitAsync();
+        return list;
+    }
+
+    public async Task DeletePhotoRecordAsync(Guid photoId)
+    {
+        await using var tx = await _connection.BeginTransactionAsync();
+        await DatabaseConfig.SetSessionContextAsync(_connection, tx, 1, 1);
+        const string sql = "DELETE FROM photos WHERE id = @id;";
+        await using var cmd = new NpgsqlCommand(sql, _connection, tx);
+        cmd.Parameters.AddWithValue("id", photoId);
+        await cmd.ExecuteNonQueryAsync();
+        await tx.CommitAsync();
+    }
+
     public void Dispose()
     {
         _connection?.Dispose();

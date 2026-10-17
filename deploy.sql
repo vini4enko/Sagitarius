@@ -5,7 +5,6 @@
 -- ============================================================================
 
 \set ON_ERROR_STOP on
-
 -- ----------------------------------------------------------------------------
 -- Part 0. Database recreation
 -- ----------------------------------------------------------------------------
@@ -19,12 +18,12 @@ CREATE DATABASE photo_organizer
          TEMPLATE   = template0;
 
 \c photo_organizer
-
 -- ----------------------------------------------------------------------------
 -- Part 1. Extensions
 -- ----------------------------------------------------------------------------
 CREATE EXTENSION IF NOT EXISTS postgis;
 CREATE EXTENSION IF NOT EXISTS pgcrypto;   -- crypt(), gen_salt(), digest()
+
 
 -- ----------------------------------------------------------------------------
 -- Part 2. Roles (cluster-wide, create if missing)
@@ -52,8 +51,21 @@ ALTER ROLE app_owner NOSUPERUSER NOBYPASSRLS NOCREATEROLE NOCREATEDB;
 ALTER ROLE app_admin NOSUPERUSER NOBYPASSRLS NOCREATEROLE NOCREATEDB;
 ALTER ROLE app_user  NOSUPERUSER NOBYPASSRLS NOCREATEROLE NOCREATEDB;
 
+
 -- ----------------------------------------------------------------------------
--- Part 3. Tables
+-- Part 3. Utility functions 
+-- ----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION set_updated_at()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    NEW.updated_at := now();
+    RETURN NEW;
+END;
+$$;
+
+
+-- ----------------------------------------------------------------------------
+-- Part 4. Tables
 -- ----------------------------------------------------------------------------
 
 -- Пользователи приложения (кто логинится). Пароль хранится как bcrypt-хэш.
@@ -192,10 +204,6 @@ CREATE TABLE show_photos (
 CREATE INDEX idx_show_photos_show  ON show_photos(show_id, position);
 CREATE INDEX idx_show_photos_photo ON show_photos(photo_id);
 
--- Триггер на updated_at
-CREATE TRIGGER trg_shows_updated_at
-BEFORE UPDATE ON shows
-FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 -- RLS и права
 ALTER TABLE shows       ENABLE ROW LEVEL SECURITY;
@@ -221,6 +229,8 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON show_photos TO app_admin;
 GRANT USAGE, SELECT ON SEQUENCE shows_id_seq        TO app_admin;
 
 -- Очередь компенсирующих действий для S3-объектов.
+--Таблица - "Последний рубеж": если компенсирующее удаление из S3 не удалось,
+--задача сохраняется здесь для фонового обработчика или ручного разбора.
 CREATE TABLE cleanup_queue (
     id            bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     action_type   text   NOT NULL CHECK (action_type IN ('delete_s3_object')),
@@ -231,7 +241,7 @@ CREATE TABLE cleanup_queue (
 );
 
 -- ----------------------------------------------------------------------------
--- Part 4. Indexes
+-- Part 5. Indexes
 -- ----------------------------------------------------------------------------
 CREATE INDEX idx_photo_acl_photo_read ON photo_acl(photo_id) WHERE can_read;
 CREATE INDEX idx_photo_acl_subject    ON photo_acl(subject_type, subject_id);
@@ -245,23 +255,22 @@ CREATE INDEX idx_attributes_author    ON attributes(author_name);
 CREATE INDEX idx_cleanup_queue_unprocessed
     ON cleanup_queue(created_at)
     WHERE processed_at IS NULL;
--- ----------------------------------------------------------------------------
--- Part 5. Trigger function for updated_at
--- ----------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION set_updated_at()
-RETURNS trigger LANGUAGE plpgsql AS $$
-BEGIN
-    NEW.updated_at := now();
-    RETURN NEW;
-END;
-$$;
 
+-- ----------------------------------------------------------------------------
+-- Part 6. Triggers
+-- ----------------------------------------------------------------------------
 CREATE TRIGGER trg_attributes_updated_at
 BEFORE UPDATE ON attributes
 FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
+-- Триггер на updated_at
+CREATE TRIGGER trg_shows_updated_at
+BEFORE UPDATE ON shows
+FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+
 -- ----------------------------------------------------------------------------
--- Part 6. Session context functions
+-- Part 7. Session context functions
 -- ----------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION app_current_user_id() RETURNS bigint
 LANGUAGE sql STABLE PARALLEL SAFE AS $$
@@ -274,7 +283,7 @@ LANGUAGE sql STABLE PARALLEL SAFE AS $$
 $$;
 
 -- ----------------------------------------------------------------------------
--- Part 7. Access-check functions
+-- Part 8. Access-check functions
 -- ----------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION app_can_read(p_photo_id uuid)
 RETURNS boolean
@@ -1040,23 +1049,121 @@ INSERT INTO app_roles(name, description) VALUES
     ('viewer',  'Наблюдатель')
 ON CONFLICT (name) DO NOTHING;
 
---Таблица - "Последний рубеж": если компенсирующее удаление из S3 не удалось,
---задача сохраняется здесь для фонового обработчика или ручного разбора.
-CREATE TABLE cleanup_queue (
-    id            bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    action_type   text   NOT NULL CHECK (action_type IN ('delete_s3_object')),
-    payload       jsonb  NOT NULL,        -- например, {"bucket": "...", "key": "..."}
-    created_at    timestamptz NOT NULL DEFAULT now(),
-    processed_at  timestamptz,
-    error_message text
-);
-
-CREATE INDEX idx_cleanup_queue_unprocessed
-    ON cleanup_queue(created_at)
-    WHERE processed_at IS NULL;
-
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO app_admin;
 
+-- ----------------------------------------------------------------------------
+-- 
+-- ----------------------------------------------------------------------------
+
+-- Таблица аудита
+CREATE TABLE audit_log (
+    id           bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    changed_at   timestamptz NOT NULL DEFAULT now(),
+    changed_by   bigint,                 -- app_users.id или NULL
+    operation    text NOT NULL CHECK (operation IN ('INSERT','UPDATE','DELETE')),
+    table_name   text NOT NULL,
+    record_id    text NOT NULL,          -- uuid или bigint в текстовом виде
+    before_data  jsonb,
+    after_data   jsonb,
+    change_diff  jsonb
+);
+
+CREATE INDEX idx_audit_log_time   ON audit_log(changed_at DESC);
+CREATE INDEX idx_audit_log_table  ON audit_log(table_name, changed_at DESC);
+
+-- Функция для вычисления разницы между old и new (только изменённые ключи)
+CREATE OR REPLACE FUNCTION fn_jsonb_diff(p_old jsonb, p_new jsonb)
+RETURNS jsonb LANGUAGE sql IMMUTABLE AS $$
+    SELECT COALESCE(jsonb_object_agg(key, value), '{}'::jsonb)
+    FROM   jsonb_each(p_new)
+    WHERE  p_old->>key IS DISTINCT FROM p_new->>key;
+$$;
+
+-- Универсальная триггерная функция
+CREATE OR REPLACE FUNCTION audit_trigger()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = pg_catalog, public AS $$
+DECLARE
+    v_user_id bigint;
+    v_record_id text;
+BEGIN
+    -- Пытаемся получить app.user_id из сессии, иначе NULL
+    BEGIN
+        v_user_id := NULLIF(current_setting('app.user_id', true), '')::bigint;
+    EXCEPTION WHEN OTHERS THEN
+        v_user_id := NULL;
+    END;
+
+    -- Определяем идентификатор записи в зависимости от таблицы
+    IF TG_TABLE_NAME IN ('photos','attributes','link','show_photos') THEN
+        v_record_id := COALESCE(NEW.id::text, OLD.id::text);
+    ELSIF TG_TABLE_NAME IN ('shows') THEN
+        v_record_id := COALESCE(NEW.id::text, OLD.id::text);
+    ELSE
+        v_record_id := 'unknown';
+    END IF;
+
+    INSERT INTO audit_log(changed_by, operation, table_name, record_id,
+                          before_data, after_data, change_diff)
+    VALUES (
+        v_user_id,
+        TG_OP,
+        TG_TABLE_NAME,
+        v_record_id,
+        CASE WHEN TG_OP <> 'INSERT' THEN to_jsonb(OLD) END,
+        CASE WHEN TG_OP <> 'DELETE' THEN to_jsonb(NEW) END,
+        CASE WHEN TG_OP = 'UPDATE'
+             THEN fn_jsonb_diff(to_jsonb(OLD), to_jsonb(NEW)) END
+    );
+
+    RETURN COALESCE(NEW, OLD);
+END;
+$$;
+
+-- Навешиваем триггеры на контролируемые таблицы
+CREATE TRIGGER trg_audit_photos      AFTER INSERT OR UPDATE OR DELETE ON photos      FOR EACH ROW EXECUTE FUNCTION audit_trigger();
+CREATE TRIGGER trg_audit_attributes  AFTER INSERT OR UPDATE OR DELETE ON attributes  FOR EACH ROW EXECUTE FUNCTION audit_trigger();
+CREATE TRIGGER trg_audit_shows       AFTER INSERT OR UPDATE OR DELETE ON shows       FOR EACH ROW EXECUTE FUNCTION audit_trigger();
+CREATE TRIGGER trg_audit_show_photos AFTER INSERT OR UPDATE OR DELETE ON show_photos FOR EACH ROW EXECUTE FUNCTION audit_trigger();
+CREATE TRIGGER trg_audit_link        AFTER INSERT OR UPDATE OR DELETE ON link        FOR EACH ROW EXECUTE FUNCTION audit_trigger();
+
+-- Управление аудитом через настройку
+CREATE TABLE app_settings (
+    key   text PRIMARY KEY,
+    value text NOT NULL
+);
+INSERT INTO app_settings(key, value) VALUES ('audit_enabled', 'true')
+ON CONFLICT (key) DO NOTHING;
+
+-- Процедура включения/отключения аудита (администратор)
+CREATE OR REPLACE PROCEDURE set_audit_enabled(p_enabled boolean)
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = pg_catalog, public AS $$
+BEGIN
+    IF NOT pg_has_role(session_user, 'app_admin', 'MEMBER') THEN
+        RAISE EXCEPTION 'only app_admin may toggle audit' USING ERRCODE = '42501';
+    END IF;
+
+    IF p_enabled THEN
+        ALTER TABLE photos      ENABLE TRIGGER trg_audit_photos;
+        ALTER TABLE attributes  ENABLE TRIGGER trg_audit_attributes;
+        ALTER TABLE shows       ENABLE TRIGGER trg_audit_shows;
+        ALTER TABLE show_photos ENABLE TRIGGER trg_audit_show_photos;
+        ALTER TABLE link        ENABLE TRIGGER trg_audit_link;
+        UPDATE app_settings SET value = 'true' WHERE key = 'audit_enabled';
+    ELSE
+        ALTER TABLE photos      DISABLE TRIGGER trg_audit_photos;
+        ALTER TABLE attributes  DISABLE TRIGGER trg_audit_attributes;
+        ALTER TABLE shows       DISABLE TRIGGER trg_audit_shows;
+        ALTER TABLE show_photos DISABLE TRIGGER trg_audit_show_photos;
+        ALTER TABLE link        DISABLE TRIGGER trg_audit_link;
+        UPDATE app_settings SET value = 'false' WHERE key = 'audit_enabled';
+    END IF;
+END;
+$$;
+
+GRANT EXECUTE ON PROCEDURE set_audit_enabled(boolean) TO app_admin;
+GRANT EXECUTE ON FUNCTION fn_jsonb_diff(jsonb, jsonb) TO app_admin;
 -- ----------------------------------------------------------------------------
 -- Part 13. Sanity checks
 -- ----------------------------------------------------------------------------
@@ -1131,3 +1238,20 @@ BEGIN
     RAISE NOTICE 'Deployment complete: % roles seeded, % application tables created',
         v_roles_count, v_tables_count;
 END $$;
+
+
+/*Пример правильной последовательности
+1. Extensions
+2. Roles
+3. Utility functions (set_updated_at и другие)
+4. Tables
+5. Indexes
+6. Triggers
+7. Session context functions
+8. Access-check functions
+9. RLS policies
+10. Business functions/procedures
+11. ALTER ... OWNER
+12. GRANT/REVOKE
+13. Reference data
+14. Sanity checks*/
